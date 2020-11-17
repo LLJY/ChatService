@@ -11,10 +11,10 @@
 
     <ItemGroup>
         <PackageReference Include="Grpc.AspNetCore" Version="2.32.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="Services" />
+        <PackageReference Include="Grpc.AspNetCore.Server.Reflection" Version="2.33.1" />
+        <PackageReference Include="Grpc.AspNetCore.Web" Version="2.33.1" />
+        <PackageReference Include="System.Reactive" Version="5.0.0" />
+        <PackageReference Include="System.Reactive.Linq" Version="5.0.0" />
     </ItemGroup>
 
 </Project>
