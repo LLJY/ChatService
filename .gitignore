@@ -264,5 +264,6 @@ paket-files/
 __pycache__/
 *.pyc
 
+appsettings.json
 # Cake - Uncomment if you are using it
 # tools/

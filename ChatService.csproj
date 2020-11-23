@@ -6,13 +6,21 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Protobuf Include="Protos\*.proto" GrpcServices="Server" />
+        <Protobuf Include="Protos\*.proto" GrpcServices="Client" />
+        <Protobuf Include="Protos\chat.proto" GrpcServices="Server" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Grpc.AspNetCore" Version="2.32.0" />
         <PackageReference Include="Grpc.AspNetCore.Server.Reflection" Version="2.33.1" />
         <PackageReference Include="Grpc.AspNetCore.Web" Version="2.33.1" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="5.0.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="5.0.0">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="5.0.0" />
+        <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="5.0.0-alpha.2" />
         <PackageReference Include="System.Reactive" Version="5.0.0" />
         <PackageReference Include="System.Reactive.Linq" Version="5.0.0" />
     </ItemGroup>
