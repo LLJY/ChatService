@@ -30,6 +30,7 @@ namespace ChatService
         // For more information on how to configure your application, visit https://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
+            Console.WriteLine(_configuration.GetConnectionString("ChatDB"));
             services.AddGrpc();
             services.AddGrpcClient<Notification.NotificationClient>(o =>
             {
@@ -54,10 +55,12 @@ namespace ChatService
             }
 
             app.UseRouting();
+            app.UseGrpcWeb();
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGrpcService<MainService>();
+                endpoints.MapGrpcReflectionService();
 
                 endpoints.MapGet("/",
                     async context =>
