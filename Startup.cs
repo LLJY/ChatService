@@ -43,6 +43,7 @@ namespace ChatService
             {
                 o.UseMySql(_configuration.GetConnectionString("ChatDB"), Microsoft.EntityFrameworkCore.ServerVersion.FromString("10.5.8-mariadb"));
             });
+            services.AddGrpcReflection();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
