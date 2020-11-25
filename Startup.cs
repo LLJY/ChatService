@@ -37,7 +37,7 @@ namespace ChatService
             });
             services.AddGrpcClient<User.UserClient>(o =>
             {
-                o.Address = new Uri("https://localhost:8001");
+                o.Address = new Uri("http://localhost:8001");
             });
             services.AddDbContextPool<McsvChatDbContext>(o =>
             {

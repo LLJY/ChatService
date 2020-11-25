@@ -8,9 +8,6 @@ namespace ChatService.Entities
 {
     public partial class McsvChatDbContext : DbContext
     {
-        public McsvChatDbContext()
-        {
-        }
 
         public McsvChatDbContext(DbContextOptions<McsvChatDbContext> options)
             : base(options)

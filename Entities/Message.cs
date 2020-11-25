@@ -37,6 +37,7 @@ namespace ChatService.Entities
                         Uuid = new Guid(),
                         AuthorId = userId,
                         IsForward = message.IsForward,
+                        RecieverId = message.ReceiverUserId,
                         GroupRefNavigation =
                             db.Groups.First(x => x.Uuid == Guid.Parse((ReadOnlySpan<char>) message.GroupId)),
                         MediaRefNavigation = messageMedia
@@ -50,13 +51,16 @@ namespace ChatService.Entities
                     Uuid = new Guid(),
                     AuthorId = userId,
                     IsForward = message.IsForward,
+                    RecieverId = message.ReceiverUserId,
                     GroupRefNavigation =
                         db.Groups.First(x => x.Uuid == Guid.Parse((ReadOnlySpan<char>) message.GroupId)),
                     MediaRefNavigation = messageMedia
                 };
             }
             // if not media source, the rest is normal.
-            if (message.GroupId != null)
+            Console.WriteLine($"Message groupId = {message.GroupId==null}");
+            var guid = Guid.Empty;
+            if (Guid.TryParse( message.GroupId, out guid))
             {
                 return new Message
                 {
@@ -65,8 +69,9 @@ namespace ChatService.Entities
                     Uuid = new Guid(),
                     AuthorId = userId,
                     IsForward = message.IsForward,
+                    RecieverId = message.ReceiverUserId,
                     GroupRefNavigation =
-                        db.Groups.First(x => x.Uuid == Guid.Parse((ReadOnlySpan<char>) message.GroupId)),
+                        db.Groups.First(x => x.Uuid == guid),
                 };
             }
 
@@ -76,6 +81,7 @@ namespace ChatService.Entities
                 Text = message.Message_,
                 Uuid = new Guid(),
                 AuthorId = userId,
+                RecieverId = message.ReceiverUserId,
                 IsForward = message.IsForward,
             };
         }
