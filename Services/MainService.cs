@@ -18,18 +18,12 @@ namespace ChatService.Services
     {
         public string UserId { get; }
         public IServerStreamWriter<Event> ResponseStream { get; }
-
-        public ActiveRequest(string userid, IServerStreamWriter<Event> responseStream)
-        {
-            UserId = userid;
-            ResponseStream = responseStream;
-        }
     }
 
     public class MainService : Chat.ChatBase
     {
         // an instance of service is created for every request, keep this static so it is accessible across requests
-        private static readonly BlockingCollection<ActiveRequest> ActiveRequests = new BlockingCollection<ActiveRequest>();
+        private static readonly ConcurrentDictionary<string, IServerStreamWriter<Event>> ActiveRequests = new ConcurrentDictionary<string, IServerStreamWriter<Event>>();
         private readonly Notification.NotificationClient _notificationClient;
         private readonly User.UserClient _userClient;
         private readonly McsvChatDbContext _db;
@@ -46,62 +40,85 @@ namespace ChatService.Services
         public override async Task EventStream(IAsyncStreamReader<Event> requestStream,
             IServerStreamWriter<Event> responseStream, ServerCallContext context)
         {
-            while (await requestStream.MoveNext())
+            try
             {
-                var currentEvent = requestStream.Current;
-                var senderInfo = await _userClient.GetUserInfoAsync(new GetUserInfoRequest
-                    {Userid = currentEvent.SenderInfo.Userid});
-                // check if this is an initial message that is sent on the first connection
-                if (currentEvent.SenderInfo.IsInit)
+                while (await requestStream.MoveNext())
                 {
-                    ActiveRequests.Add(new ActiveRequest(currentEvent.SenderInfo.Userid, responseStream));
-                }
-                else if (currentEvent.Message != null)
-                {
-                    var message =
-                        Message.CreateMessageFromRequest(currentEvent.Message, currentEvent.SenderInfo.Userid, _db);
-                    await _db.Messages.AddAsync(message);
-                    // get the active request if the user is currently subscribed
-                    var receiverResponse = ActiveRequests
-                        .FirstOrDefault(x => x.UserId == currentEvent.Message.ReceiverUserId);
-                    // user is currently online!
-                    if (receiverResponse != null)
+                    var currentEvent = requestStream.Current;
+                    var senderInfo = await _userClient.GetUserInfoAsync(new GetUserInfoRequest
+                        {Userid = currentEvent.SenderInfo.Userid});
+                    // check if this is an initial message that is sent on the first connection
+                    if (currentEvent.SenderInfo.IsInit)
                     {
-                        // just send the entire event over
-                        await receiverResponse.ResponseStream.WriteAsync(currentEvent);
+                        ActiveRequests.TryAdd(currentEvent.SenderInfo.Userid, responseStream);
                     }
-                    else
+                    else if (currentEvent.Message != null)
                     {
-                        // change the notification templates depending on group or no group
-                        if (currentEvent.Message.GroupId == null)
+                        var message =
+                            Message.CreateMessageFromRequest(currentEvent.Message, currentEvent.SenderInfo.Userid, _db);
+                        await _db.Messages.AddAsync(message);
+                        // get the active request if the user is currently subscribed
+                        ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
+                            out var receiverResponse);
+                        // user is currently online!
+                        if (receiverResponse != null)
                         {
-                            // send user a notification when they are offline
-                            await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
-                            {
-                                Message = $"New Message: {currentEvent.Message.Message_}",
-                                Title = $"{senderInfo.UserName}",
-                                Userid = senderInfo.Userid
-                            });
+                            // just send the entire event over
+                            await receiverResponse.WriteAsync(currentEvent);
                         }
                         else
                         {
-                            // send user a notification when they are offline
-                            await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
+                            // change the notification templates depending on group or no group
+                            if (currentEvent.Message.GroupId == null)
                             {
-                                Message = $"New Message: {currentEvent.Message.Message_}",
-                                Title = $"{senderInfo.UserName}",
-                                Userid = senderInfo.Userid
-                            });
+                                // send user a notification when they are offline
+                                await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
+                                {
+                                    Message = $"New Message: {currentEvent.Message.Message_}",
+                                    Title = $"{senderInfo.UserName}",
+                                    Userid = senderInfo.Userid
+                                });
+                            }
+                            else
+                            {
+                                // send user a notification when they are offline
+                                await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
+                                {
+                                    Message = $"New Message: {currentEvent.Message.Message_}",
+                                    Title = $"{senderInfo.UserName}",
+                                    Userid = senderInfo.Userid
+                                });
+                            }
                         }
+
+                        await _db.SaveChangesAsync();
+                    }
+                    else if (currentEvent.GroupCreated != null)
+                    {
                     }
                 }
-                else if (currentEvent.GroupCreated != null)
+                // unfortunately, by this stage we might not have the key (userid) so we have to take the inefficient route and find it using linq
+                // then remove it using the key, which searches for it again. Mitigate this by running it in an asynchronous task
+                // so we can let this run while we remove the active user.
+                await Task.Run(() =>
                 {
-                }
+                    // remove the request as an active request before it ends
+                    var activeRequest = ActiveRequests.FirstOrDefault(x => x.Value == responseStream);
+                    ActiveRequests.Remove(activeRequest.Key, out var request);
+                });
+
             }
-            // remove the request as an active request before it ends
-            var activeRequest = ActiveRequests.FirstOrDefault(x => x.ResponseStream == responseStream);
-            ActiveRequests.TryTake(out activeRequest);
+            catch (Exception e)
+            {
+                // same thing here
+                await Task.Run(() =>
+                {
+                    // remove any references to the current request on error
+                    var activeRequest = ActiveRequests.FirstOrDefault(x => x.Value == responseStream);
+                    ActiveRequests.Remove(activeRequest.Key, out var request);
+                });
+                
+            }
         }
 
         public override async Task<NewMessagesResponse> GetUnreadMessages(NewMessagesRequest request,
