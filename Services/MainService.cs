@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -27,7 +28,8 @@ namespace ChatService.Services
 
     public class MainService : Chat.ChatBase
     {
-        private readonly List<ActiveRequest> _activeRequests = new List<ActiveRequest>();
+        // an instance of service is created for every request, keep this static so it is accessible across requests
+        private static readonly BlockingCollection<ActiveRequest> ActiveRequests = new BlockingCollection<ActiveRequest>();
         private readonly Notification.NotificationClient _notificationClient;
         private readonly User.UserClient _userClient;
         private readonly McsvChatDbContext _db;
@@ -52,7 +54,7 @@ namespace ChatService.Services
                 // check if this is an initial message that is sent on the first connection
                 if (currentEvent.SenderInfo.IsInit)
                 {
-                    _activeRequests.Add(new ActiveRequest(currentEvent.SenderInfo.Userid, responseStream));
+                    ActiveRequests.Add(new ActiveRequest(currentEvent.SenderInfo.Userid, responseStream));
                 }
                 else if (currentEvent.Message != null)
                 {
@@ -60,7 +62,7 @@ namespace ChatService.Services
                         Message.CreateMessageFromRequest(currentEvent.Message, currentEvent.SenderInfo.Userid, _db);
                     await _db.Messages.AddAsync(message);
                     // get the active request if the user is currently subscribed
-                    var receiverResponse = _activeRequests
+                    var receiverResponse = ActiveRequests
                         .FirstOrDefault(x => x.UserId == currentEvent.Message.ReceiverUserId);
                     // user is currently online!
                     if (receiverResponse != null)
@@ -98,7 +100,8 @@ namespace ChatService.Services
                 }
             }
             // remove the request as an active request before it ends
-            _activeRequests.Remove(_activeRequests.Where(x => x.ResponseStream == responseStream).FirstOrDefault());
+            var activeRequest = ActiveRequests.FirstOrDefault(x => x.ResponseStream == responseStream);
+            ActiveRequests.TryTake(out activeRequest);
         }
 
         public override async Task<NewMessagesResponse> GetUnreadMessages(NewMessagesRequest request,
