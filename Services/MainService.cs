@@ -14,12 +14,6 @@ using Message = ChatService.Entities.Message;
 
 namespace ChatService.Services
 {
-    public class ActiveRequest
-    {
-        public string UserId { get; }
-        public IServerStreamWriter<Event> ResponseStream { get; }
-    }
-
     public class MainService : Chat.ChatBase
     {
         // an instance of service is created for every request, keep this static so it is accessible across requests
@@ -47,7 +41,8 @@ namespace ChatService.Services
                     var currentEvent = requestStream.Current;
                     var senderInfo = await _userClient.GetUserInfoAsync(new GetUserInfoRequest
                         {Userid = currentEvent.SenderInfo.Userid});
-                    // check if this is an initial message that is sent on the first connection
+                    // check if this is an initial message that is sent on the first connection'
+                    //currentEvent.SenderInfo
                     if (currentEvent.SenderInfo.IsInit)
                     {
                         ActiveRequests.TryAdd(currentEvent.SenderInfo.Userid, responseStream);
@@ -56,6 +51,29 @@ namespace ChatService.Services
                     {
                         var message =
                             Message.CreateMessageFromRequest(currentEvent.Message, currentEvent.SenderInfo.Userid, _db);
+                        // if the group is not null, add many fields for user read
+                        if (message.GroupRef != null)
+                        {
+                            foreach (var memberId in message.GroupRefNavigation.GroupMembers)
+                            {
+                                await _db.UsersReads.AddAsync(new UsersRead
+                                {
+                                    MessageRefNavigation = message,
+                                    MessageStatus = 0,
+                                    UserId = memberId.Userid
+                                });
+                            }
+                        }
+                        // if group is null, this is a peer to peer message, only add one read.
+                        else
+                        {
+                            await _db.UsersReads.AddAsync(new UsersRead
+                            {
+                                MessageRefNavigation = message,
+                                MessageStatus = 0,
+                                UserId = requestStream.Current.Message.ReceiverUserId
+                            });
+                        }
                         await _db.Messages.AddAsync(message);
                         // get the active request if the user is currently subscribed
                         ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
@@ -69,7 +87,7 @@ namespace ChatService.Services
                         else
                         {
                             // change the notification templates depending on group or no group
-                            if (currentEvent.Message.GroupId == null)
+                            if (Guid.TryParse(currentEvent.Message.GroupId, out var guid))
                             {
                                 // send user a notification when they are offline
                                 await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
@@ -95,6 +113,71 @@ namespace ChatService.Services
                     }
                     else if (currentEvent.GroupCreated != null)
                     {
+                        //var groupMembers = currentEvent.GroupCreated.
+                        var group = new Group
+                        {
+                            // empty message list
+                            Messages = { },
+                            Title = currentEvent.GroupCreated.Title,
+                            Uuid = Guid.NewGuid(),
+                        };
+                        await _db.Groups.AddAsync(group);
+                        var groupMembers = currentEvent.GroupCreated.GroupMemberIds.Select(x => new GroupMember
+                        {
+                            Userid = x,
+                            GroupRefNavigation = group,
+                            // everyone is not admin by default
+                            IsAdmin = false,
+                        });
+                        await _db.GroupMembers.AddRangeAsync(groupMembers);
+                        var creatorMember = new GroupMember
+                        {
+                            Userid = currentEvent.GroupCreated.GroupCreator,
+                            IsAdmin = true,
+                            GroupRefNavigation = group
+                        };
+                        // get the active request if the user is currently subscribed
+                        ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
+                            out var receiverResponse);
+                        // user is currently online!
+                        if (receiverResponse != null)
+                        {
+                            // just send the entire event over
+                            await receiverResponse.WriteAsync(currentEvent);
+                        }
+                        else
+                        {
+                            // send a notification to everyone but the creator, it doesn't make sense to notify the creator
+                            foreach (var memberIds in currentEvent.GroupCreated.GroupMemberIds)
+                            {
+                                // send user a notification when they are offline
+                                await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
+                                {
+                                    Message = $"{currentEvent.GroupCreated.Title}",
+                                    Title = $"You have been added to a group!",
+                                    Userid = memberIds
+                                });
+                            }
+                        }
+
+                        await _db.SaveChangesAsync();
+                    }else if (currentEvent.MessageRead != null)
+                    {
+                        _db.UsersReads.FirstOrDefault(x=>x.MessageRefNavigation.Uuid == Guid.Parse(currentEvent.MessageRead.MessageId)).MessageStatus = (int)currentEvent.MessageRead.MessageStatus;
+                        // get the active request if the user is currently subscribed
+                        ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
+                            out var receiverResponse);
+                        // user is currently online!
+                        if (receiverResponse != null)
+                        {
+                            // just send the entire event over
+                            await receiverResponse.WriteAsync(currentEvent);
+                        }
+                        // no need to send notification for read receipts
+                        
+                        
+                        await _db.SaveChangesAsync();
+
                     }
                 }
                 // unfortunately, by this stage we might not have the key (userid) so we have to take the inefficient route and find it using linq
@@ -148,18 +231,17 @@ namespace ChatService.Services
                                     : null,
                                 Message_ = map.Text,
                                 // only get the navigation if the group ref exists
-                                GroupId = map.GroupRef != null ? map.GroupRefNavigation.Uuid.ToString() : null,
+                                GroupId = map.GroupRef != null ? map.GroupRefNavigation.Uuid.ToString() : "",
                                 IsForward = map.IsForward,
                                 MessageStatus = (uint) map.UsersReads.First().MessageStatus,
-                                ReplyId = map.ReplyMessageRefNavigation.Uuid.ToString(),
+                                ReplyId = map.ReplyMessageRefNavigation.Uuid.ToString()?? "",
                                 // receiver id is nullable, no need ternary
-                                ReceiverUserId = map.RecieverId,
+                                ReceiverUserId = map.ReceiverId,
                             })
                     }
                 };
             });
         }
-
         public override async Task<AllMessagesResponse> GetAllMessages(AllMessagesRequest request,
             ServerCallContext context)
         {
@@ -188,16 +270,35 @@ namespace ChatService.Services
                                     : null,
                                 Message_ = map.Text,
                                 // only get the navigation if the group ref exists
-                                GroupId = map.GroupRef != null ? map.GroupRefNavigation.Uuid.ToString() : null,
+                                GroupId = map.GroupRef != null ? map.GroupRefNavigation.Uuid.ToString() : "",
                                 IsForward = map.IsForward,
                                 MessageStatus = (uint) map.UsersReads.First().MessageStatus,
-                                ReplyId = map.ReplyMessageRefNavigation.Uuid.ToString(),
+                                ReplyId = map.ReplyMessageRefNavigation.Uuid.ToString()?? "",
                                 // receiver id is nullable, no need ternary
-                                ReceiverUserId = map.RecieverId,
+                                ReceiverUserId = map.ReceiverId,
                             })
                     }
                 };
             });
+        }
+
+        public override async Task<GroupInfo> GetGroupInfo(GetGroupsRequest request, ServerCallContext context)
+        {
+            var group = _db.Groups.FirstOrDefault(x => x.Uuid == Guid.Parse(request.GroupId));
+            return new GroupInfo
+            {
+                Title = group.Title,
+                GroupId = request.GroupId,
+                GroupImage = group.PhotoRefNavigation != null
+                    ? new Protos.Media
+                    {
+                        MediaUrl = group.PhotoRefNavigation.Url,
+                        MimeType = group.PhotoRefNavigation.MimeType,
+                        SizeBytes = (ulong) @group.PhotoRefNavigation.Size
+                    }
+                    : null,
+                GroupMemberIds = {group.GroupMembers.Select(x => x.Userid)}
+            };
         }
     }
 }

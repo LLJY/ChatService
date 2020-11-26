@@ -13,11 +13,9 @@ namespace ChatService.Entities
             InverseReplyMessageRefNavigation = new HashSet<Message>();
             UsersReads = new HashSet<UsersRead>();
         }
-        /**
-         * Converts a protobuf contract message to a database storable message
-         */
-        public static Message CreateMessageFromRequest(Protos.Message message, string userId, McsvChatDbContext db)
+ public static Message CreateMessageFromRequest(Protos.Message message, string userId, McsvChatDbContext db)
         {
+            Message finalMessage;
             // if message type is a media message, attatch a media to it
             if (message.Media != null)
             {
@@ -25,33 +23,34 @@ namespace ChatService.Entities
                 {
                     MimeType = message.Media.MediaUrl,
                     Url = message.Media.MediaUrl,
-                    Uuid = new Guid(),
+                    Uuid = Guid.NewGuid(),
                     Size = (int) message.Media.SizeBytes
                 };
-                if (message.GroupId != null)
+                if (Guid.TryParse( message.GroupId, out var guid1))
                 {
                     return new Message
                     {
                         Dateposted = DateTime.Now,
                         Text = message.Message_,
-                        Uuid = new Guid(),
+                        Uuid = Guid.NewGuid(),
                         AuthorId = userId,
                         IsForward = message.IsForward,
-                        RecieverId = message.ReceiverUserId,
+                        ReceiverId = message.ReceiverUserId,
                         GroupRefNavigation =
-                            db.Groups.First(x => x.Uuid == Guid.Parse((ReadOnlySpan<char>) message.GroupId)),
+                            db.Groups.First(x => x.Uuid == guid1),
                         MediaRefNavigation = messageMedia
                     };
+                    
                 }
 
                 return new Message
                 {
                     Dateposted = DateTime.Now,
                     Text = message.Message_,
-                    Uuid = new Guid(),
+                    Uuid = Guid.NewGuid(),
                     AuthorId = userId,
                     IsForward = message.IsForward,
-                    RecieverId = message.ReceiverUserId,
+                    ReceiverId = message.ReceiverUserId,
                     GroupRefNavigation =
                         db.Groups.First(x => x.Uuid == Guid.Parse((ReadOnlySpan<char>) message.GroupId)),
                     MediaRefNavigation = messageMedia
@@ -66,10 +65,10 @@ namespace ChatService.Entities
                 {
                     Dateposted = DateTime.Now,
                     Text = message.Message_,
-                    Uuid = new Guid(),
+                    Uuid = Guid.NewGuid(),
                     AuthorId = userId,
                     IsForward = message.IsForward,
-                    RecieverId = message.ReceiverUserId,
+                    ReceiverId = message.ReceiverUserId,
                     GroupRefNavigation =
                         db.Groups.First(x => x.Uuid == guid),
                 };
@@ -79,13 +78,12 @@ namespace ChatService.Entities
             {
                 Dateposted = DateTime.Now,
                 Text = message.Message_,
-                Uuid = new Guid(),
+                Uuid = Guid.NewGuid(),
                 AuthorId = userId,
-                RecieverId = message.ReceiverUserId,
+                ReceiverId = message.ReceiverUserId,
                 IsForward = message.IsForward,
             };
         }
-
         public int Id { get; set; }
         public Guid Uuid { get; set; }
         public int? MediaRef { get; set; }
@@ -95,7 +93,7 @@ namespace ChatService.Entities
         public string AuthorId { get; set; }
         public int? GroupRef { get; set; }
         public DateTime Dateposted { get; set; }
-        public string RecieverId { get; set; }
+        public string ReceiverId { get; set; }
 
         public virtual Group GroupRefNavigation { get; set; }
         public virtual Media MediaRefNavigation { get; set; }

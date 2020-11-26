@@ -9,6 +9,7 @@ namespace ChatService.Entities
     {
         public Group()
         {
+            GroupMembers = new HashSet<GroupMember>();
             Messages = new HashSet<Message>();
         }
 
@@ -18,7 +19,7 @@ namespace ChatService.Entities
         public int? PhotoRef { get; set; }
 
         public virtual Media PhotoRefNavigation { get; set; }
-        public virtual GroupMember GroupMember { get; set; }
+        public virtual ICollection<GroupMember> GroupMembers { get; set; }
         public virtual ICollection<Message> Messages { get; set; }
     }
 }
