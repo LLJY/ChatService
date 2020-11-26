@@ -15,7 +15,6 @@ namespace ChatService.Entities
         }
  public static Message CreateMessageFromRequest(Protos.Message message, string userId, McsvChatDbContext db)
         {
-            Message finalMessage;
             // if message type is a media message, attatch a media to it
             if (message.Media != null)
             {

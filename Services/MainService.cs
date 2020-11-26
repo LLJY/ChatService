@@ -8,6 +8,7 @@ using ChatService.Protos;
 using Google.Protobuf;
 using Grpc.Core;
 using IdentityService.Protos;
+using Microsoft.EntityFrameworkCore;
 using NotificationService.Protos;
 using UserService.Protos;
 using Message = ChatService.Entities.Message;
@@ -136,19 +137,17 @@ namespace ChatService.Services
                             IsAdmin = true,
                             GroupRefNavigation = group
                         };
-                        // get the active request if the user is currently subscribed
-                        ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
-                            out var receiverResponse);
-                        // user is currently online!
-                        if (receiverResponse != null)
+                        foreach (var memberIds in currentEvent.GroupCreated.GroupMemberIds)
                         {
-                            // just send the entire event over
-                            await receiverResponse.WriteAsync(currentEvent);
-                        }
-                        else
-                        {
-                            // send a notification to everyone but the creator, it doesn't make sense to notify the creator
-                            foreach (var memberIds in currentEvent.GroupCreated.GroupMemberIds)
+                            // get the active request if the user is currently subscribed
+                            ActiveRequests.TryGetValue(memberIds,
+                                out var receiverResponse);
+                            if (receiverResponse != null)
+                            {
+                                // just send the entire event over
+                                await receiverResponse.WriteAsync(currentEvent);
+                            }
+                            else
                             {
                                 // send user a notification when they are offline
                                 await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
@@ -159,13 +158,14 @@ namespace ChatService.Services
                                 });
                             }
                         }
-
                         await _db.SaveChangesAsync();
                     }else if (currentEvent.MessageRead != null)
                     {
-                        _db.UsersReads.FirstOrDefault(x=>x.MessageRefNavigation.Uuid == Guid.Parse(currentEvent.MessageRead.MessageId)).MessageStatus = (int)currentEvent.MessageRead.MessageStatus;
+                        _db.UsersReads.First(x=>x.MessageRefNavigation.Uuid == Guid.Parse(currentEvent.MessageRead.MessageId)).MessageStatus = (int)currentEvent.MessageRead.MessageStatus;
                         // get the active request if the user is currently subscribed
-                        ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
+                        var message = _db.Messages.First(x =>
+                            x.Uuid == Guid.Parse(currentEvent.MessageRead.MessageId));
+                        ActiveRequests.TryGetValue(message.AuthorId,
                             out var receiverResponse);
                         // user is currently online!
                         if (receiverResponse != null)
@@ -191,7 +191,7 @@ namespace ChatService.Services
                 });
 
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 // same thing here
                 await Task.Run(() =>
@@ -284,7 +284,7 @@ namespace ChatService.Services
 
         public override async Task<GroupInfo> GetGroupInfo(GetGroupsRequest request, ServerCallContext context)
         {
-            var group = _db.Groups.FirstOrDefault(x => x.Uuid == Guid.Parse(request.GroupId));
+            var group = await _db.Groups.FirstOrDefaultAsync(x => x.Uuid == Guid.Parse(request.GroupId));
             return new GroupInfo
             {
                 Title = group.Title,
