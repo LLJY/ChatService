@@ -100,6 +100,7 @@ namespace ChatService.Services
                             }
                             else
                             {
+                                
                                 // send user a notification when they are offline
                                 await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
                                 {
@@ -284,21 +285,32 @@ namespace ChatService.Services
 
         public override async Task<GroupInfo> GetGroupInfo(GetGroupsRequest request, ServerCallContext context)
         {
-            var group = await _db.Groups.FirstOrDefaultAsync(x => x.Uuid == Guid.Parse(request.GroupId));
-            return new GroupInfo
+            try
             {
-                Title = group.Title,
-                GroupId = request.GroupId,
-                GroupImage = group.PhotoRefNavigation != null
-                    ? new Protos.Media
-                    {
-                        MediaUrl = group.PhotoRefNavigation.Url,
-                        MimeType = group.PhotoRefNavigation.MimeType,
-                        SizeBytes = (ulong) @group.PhotoRefNavigation.Size
-                    }
-                    : null,
-                GroupMemberIds = {group.GroupMembers.Select(x => x.Userid)}
-            };
+                var group = await _db.Groups.FirstOrDefaultAsync(x => x.Uuid == Guid.Parse(request.GroupId));
+                return new GroupInfo
+                {
+                    Title = group.Title,
+                    GroupId = request.GroupId,
+                    GroupImage = group.PhotoRefNavigation != null
+                        ? new Protos.Media
+                        {
+                            MediaUrl = group.PhotoRefNavigation.Url,
+                            MimeType = group.PhotoRefNavigation.MimeType,
+                            SizeBytes = (ulong) @group.PhotoRefNavigation.Size
+                        }
+                        : null,
+                    GroupMemberIds = {group.GroupMembers.Select(x => x.Userid)}
+                };
+            }
+            catch (NullReferenceException)
+            {
+                // empty if the group does not exist
+                return new GroupInfo
+                {
+
+                };
+            }
         }
     }
 }
