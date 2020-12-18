@@ -15,7 +15,7 @@ namespace ChatService.Entities
         }
  public static Message CreateMessageFromRequest(Protos.Message message, string userId, McsvChatDbContext db)
         {
-            // if message type is a media message, attatch a media to it
+            // if message type is a media message, attach a media to it
             if (message.Media != null)
             {
                 var messageMedia = new Media
@@ -31,7 +31,7 @@ namespace ChatService.Entities
                     {
                         Dateposted = DateTime.Now,
                         Text = message.Message_,
-                        Uuid = Guid.NewGuid(),
+                        Uuid = Guid.Parse(message.Id),
                         AuthorId = userId,
                         IsForward = message.IsForward,
                         ReceiverId = message.ReceiverUserId,
@@ -46,7 +46,7 @@ namespace ChatService.Entities
                 {
                     Dateposted = DateTime.Now,
                     Text = message.Message_,
-                    Uuid = Guid.NewGuid(),
+                    Uuid = Guid.Parse(message.Id),
                     AuthorId = userId,
                     IsForward = message.IsForward,
                     ReceiverId = message.ReceiverUserId,
@@ -64,7 +64,7 @@ namespace ChatService.Entities
                 {
                     Dateposted = DateTime.Now,
                     Text = message.Message_,
-                    Uuid = Guid.NewGuid(),
+                    Uuid = Guid.Parse(message.Id),
                     AuthorId = userId,
                     IsForward = message.IsForward,
                     ReceiverId = message.ReceiverUserId,
@@ -77,7 +77,7 @@ namespace ChatService.Entities
             {
                 Dateposted = DateTime.Now,
                 Text = message.Message_,
-                Uuid = Guid.NewGuid(),
+                Uuid = Guid.Parse(message.Id),
                 AuthorId = userId,
                 ReceiverId = message.ReceiverUserId,
                 IsForward = message.IsForward,

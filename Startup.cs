@@ -33,7 +33,7 @@ namespace ChatService
             services.AddGrpc();
             services.AddGrpcClient<Notification.NotificationClient>(o =>
             {
-                o.Address = new Uri("https://localhost:6001");
+                o.Address = new Uri("http://localhost:11001");
             });
             services.AddGrpcClient<User.UserClient>(o =>
             {

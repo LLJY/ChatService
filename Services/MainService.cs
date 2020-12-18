@@ -40,8 +40,12 @@ namespace ChatService.Services
                 while (await requestStream.MoveNext())
                 {
                     var currentEvent = requestStream.Current;
-                    var senderInfo = await _userClient.GetUserInfoAsync(new GetUserInfoRequest
-                        {Userid = currentEvent.SenderInfo.Userid});
+                    Console.WriteLine(currentEvent.ToString());
+                    var userInfoRequest = new GetUserInfoRequest
+                    {
+                        Userid = currentEvent.SenderInfo.Userid
+                    };
+                    var senderInfo = _userClient.GetUserInfo(userInfoRequest);
                     // check if this is an initial message that is sent on the first connection'
                     //currentEvent.SenderInfo
                     if (currentEvent.SenderInfo.IsInit)
@@ -50,19 +54,40 @@ namespace ChatService.Services
                     }
                     else if (currentEvent.Message != null)
                     {
+                        Console.WriteLine(currentEvent.Message.Id);
                         var message =
                             Message.CreateMessageFromRequest(currentEvent.Message, currentEvent.SenderInfo.Userid, _db);
                         // if the group is not null, add many fields for user read
                         if (message.GroupRef != null)
                         {
-                            foreach (var memberId in message.GroupRefNavigation.GroupMembers)
+                            foreach (var member in message.GroupRefNavigation.GroupMembers)
                             {
                                 await _db.UsersReads.AddAsync(new UsersRead
                                 {
                                     MessageRefNavigation = message,
                                     MessageStatus = 0,
-                                    UserId = memberId.Userid
+                                    UserId = member.Userid
                                 });
+                                // change the notification templates depending on group or no group
+                                // send user a notification when they are offline, otherwise send them the event
+                                ActiveRequests.TryGetValue(currentEvent.Message.ReceiverUserId,
+                                    out var receiver);
+                                if(receiver != null){
+                                    try
+                                    {
+                                        await _notificationClient.SendNotificationByUserIdAsync(
+                                            new UserIdNotificationRequest
+                                            {
+                                                Message = $"New Message: {currentEvent.Message.Message_}",
+                                                Title = $"{senderInfo.UserName}",
+                                                Userid = member.Userid
+                                            });
+                                    }
+                                    catch (Exception)
+                                    {
+                                        // don't do anything, sometimes unregistered tokens don't get notified.
+                                    }
+                                }
                             }
                         }
                         // if group is null, this is a peer to peer message, only add one read.
@@ -87,28 +112,14 @@ namespace ChatService.Services
                         }
                         else
                         {
-                            // change the notification templates depending on group or no group
-                            if (Guid.TryParse(currentEvent.Message.GroupId, out var guid))
-                            {
-                                // send user a notification when they are offline
+                            // send user a notification when they are offline
                                 await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
                                 {
                                     Message = $"New Message: {currentEvent.Message.Message_}",
                                     Title = $"{senderInfo.UserName}",
-                                    Userid = senderInfo.Userid
+                                    Userid = currentEvent.Message.ReceiverUserId
                                 });
-                            }
-                            else
-                            {
-                                
-                                // send user a notification when they are offline
-                                await _notificationClient.SendNotificationByUserIdAsync(new UserIdNotificationRequest
-                                {
-                                    Message = $"New Message: {currentEvent.Message.Message_}",
-                                    Title = $"{senderInfo.UserName}",
-                                    Userid = senderInfo.Userid
-                                });
-                            }
+                            
                         }
 
                         await _db.SaveChangesAsync();
@@ -162,6 +173,7 @@ namespace ChatService.Services
                         await _db.SaveChangesAsync();
                     }else if (currentEvent.MessageRead != null)
                     {
+                        Console.WriteLine("message read");
                         _db.UsersReads.First(x=>x.MessageRefNavigation.Uuid == Guid.Parse(currentEvent.MessageRead.MessageId)).MessageStatus = (int)currentEvent.MessageRead.MessageStatus;
                         // get the active request if the user is currently subscribed
                         var message = _db.Messages.First(x =>
@@ -178,7 +190,6 @@ namespace ChatService.Services
                         
                         
                         await _db.SaveChangesAsync();
-
                     }
                 }
                 // unfortunately, by this stage we might not have the key (userid) so we have to take the inefficient route and find it using linq
@@ -192,8 +203,9 @@ namespace ChatService.Services
                 });
 
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine(ex.ToString());
                 // same thing here
                 await Task.Run(() =>
                 {
@@ -201,7 +213,6 @@ namespace ChatService.Services
                     var activeRequest = ActiveRequests.FirstOrDefault(x => x.Value == responseStream);
                     ActiveRequests.Remove(activeRequest.Key, out var request);
                 });
-                
             }
         }
 
@@ -238,6 +249,13 @@ namespace ChatService.Services
                                 ReplyId = map.ReplyMessageRefNavigation.Uuid.ToString()?? "",
                                 // receiver id is nullable, no need ternary
                                 ReceiverUserId = map.ReceiverId,
+                                SenderInfo = new SenderInfo
+                                {
+                                    Userid = map.AuthorId,
+                                    // isinit can be ignored
+                                    IsInit = false
+                                },
+                                DatePostedUnixTimestamp = ((DateTimeOffset)map.Dateposted).ToUnixTimeMilliseconds()
                             })
                     }
                 };
@@ -255,8 +273,7 @@ namespace ChatService.Services
                     Message =
                     {
                         _db.Messages.Where(x =>
-                                x.UsersReads.Any(o =>
-                                    o.UserId == request.Userid))
+                                x.AuthorId == request.Userid || x.ReceiverId == request.Userid || x.GroupRefNavigation.GroupMembers.Any(x=>x.Userid == request.Userid))
                             .Select(map => new Protos.Message
                             {
                                 Id = map.Uuid.ToString(),
@@ -277,6 +294,13 @@ namespace ChatService.Services
                                 ReplyId = map.ReplyMessageRefNavigation.Uuid.ToString()?? "",
                                 // receiver id is nullable, no need ternary
                                 ReceiverUserId = map.ReceiverId,
+                                SenderInfo = new SenderInfo
+                                {
+                                    Userid = map.AuthorId,
+                                    // isinit can be ignored
+                                    IsInit = false
+                                },
+                                DatePostedUnixTimestamp = ((DateTimeOffset)map.Dateposted).ToUnixTimeMilliseconds()
                             })
                     }
                 };
