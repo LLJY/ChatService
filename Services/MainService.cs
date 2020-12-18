@@ -8,6 +8,7 @@ using ChatService.Protos;
 using Google.Protobuf;
 using Grpc.Core;
 using IdentityService.Protos;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using NotificationService.Protos;
 using UserService.Protos;
@@ -31,7 +32,7 @@ namespace ChatService.Services
             _userClient = userClient;
             _db = db;
         }
-
+        [Authorize]
         public override async Task EventStream(IAsyncStreamReader<Event> requestStream,
             IServerStreamWriter<Event> responseStream, ServerCallContext context)
         {
@@ -215,7 +216,7 @@ namespace ChatService.Services
                 });
             }
         }
-
+        [Authorize]
         public override async Task<NewMessagesResponse> GetUnreadMessages(NewMessagesRequest request,
             ServerCallContext context)
         {
@@ -261,6 +262,7 @@ namespace ChatService.Services
                 };
             });
         }
+        [Authorize]
         public override async Task<AllMessagesResponse> GetAllMessages(AllMessagesRequest request,
             ServerCallContext context)
         {
@@ -306,7 +308,7 @@ namespace ChatService.Services
                 };
             });
         }
-
+        [Authorize]
         public override async Task<GroupInfo> GetGroupInfo(GetGroupsRequest request, ServerCallContext context)
         {
             try

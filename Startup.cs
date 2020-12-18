@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ChatService.Entities;
 using ChatService.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using NotificationService.Protos;
 using UserService.Protos;
 using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 
 namespace ChatService
 {
@@ -44,6 +46,23 @@ namespace ChatService
                 o.UseMySql(_configuration.GetConnectionString("ChatDB"), Microsoft.EntityFrameworkCore.ServerVersion.FromString("10.5.8-mariadb"));
             });
             services.AddGrpcReflection();
+            services
+                .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.IncludeErrorDetails = true;
+                    options.Authority = "https://securetoken.google.com/mcsv-firebase-service";
+                    options.Audience = "mcsv-firebase-service";
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = "https://securetoken.google.com/mcsv-firebase-service",
+                        ValidateAudience = true,
+                        ValidAudience = "mcsv-firebase-service",
+                        ValidateLifetime = true,
+                    };
+                });
+            services.AddAuthorization();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -56,7 +75,8 @@ namespace ChatService
 
             app.UseRouting();
             app.UseGrpcWeb();
-
+            app.UseAuthentication();
+            app.UseAuthorization();
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGrpcService<MainService>();
